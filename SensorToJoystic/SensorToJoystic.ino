@@ -5,8 +5,9 @@
 
 #define I2C_WIRE Wire 
 #define RESET_PIN 7 // TCA9548A'nın RESET pinine bağlı Arduino pini
-
-#define TCAADDR 0x70 // TCA9548A default I2C address
+#define UPDATE_INTERVAL 50
+#define TCAADDR 0x77 // TCA9548A default I2C address
+#define SENSOR_COUNT 2
 
 MotorcycleIMU mpu1(0x68); // 1. sensör
 MotorcycleIMU mpu2(0x68); // 2. sensör
@@ -25,6 +26,8 @@ float zAngles[5];
 
 int steeringValue = 0, frontBrakeValue = 0, rearBrakeValue = 0, leverValue = 0, shifter = 0;
 
+unsigned long lastTime;
+
 bool tcaSelect(uint8_t channel, TwoWire* wire) {
   if (channel > 7) return false;
 
@@ -39,11 +42,13 @@ bool tcaSelect(uint8_t channel, TwoWire* wire) {
     Serial.print(" Kod: ");
     Serial.println(result);
     digitalWrite(RESET_PIN, LOW);
-      delay(1000);
+      delay(100);
     digitalWrite(RESET_PIN, HIGH);
     return false;
   }
-  delay(10); // Kanal seçiminden sonra kısa bir gecikme
+  Serial.print("TCA9548A kanal seçimi basarili! Kanal: ");
+  Serial.print(channel);
+  delay(5); // Kanal seçiminden sonra kısa bir gecikme
   return true;
 }
 
@@ -51,27 +56,38 @@ void setup() {
   pinMode(RESET_PIN, OUTPUT);
   digitalWrite(RESET_PIN, HIGH);
 
+  pinMode(0, OUTPUT);
+  digitalWrite(RESET_PIN, HIGH);
+  pinMode(1, OUTPUT);
+  digitalWrite(RESET_PIN, LOW);
   I2C_WIRE.begin(); 
 
   logger.init(9600);
+  while (!Serial);
   logger.setLogLevel(INFO);
   logger.write(INFO, "TCA9548A Test Başladı");
 
   //Her MPU6050 için başlatma işlemi
-  for (uint8_t i = 0; i < 1; i++) {
+  for (uint8_t i = 0; i < SENSOR_COUNT; i++) {
     if(!tcaSelect(i, &I2C_WIRE)) return;
     mpus[i]->setWire(&I2C_WIRE);
     sprintf(buffer, "MPU6050 ID %d", i);
     mpus[i]->begin(buffer);
-    mpus[i]->setKalmanFilterIntensity(10.00f);
   }
+  lastTime = millis();
   Joystick.begin();
 }
 
 void loop() {
-  for (uint8_t i = 0; i < 1; i++) {
+  unsigned long currentTime = millis();
+  if (currentTime - lastTime < UPDATE_INTERVAL) return;
+
+  for (uint8_t i = 0; i < SENSOR_COUNT; i++) {
+    delay(1000);
     if(!tcaSelect(i, &I2C_WIRE)) return;
-    mpus[i]->update();
+    float dt = (currentTime - lastTime) / 1000.0;
+    lastTime = currentTime;
+    mpus[i]->update(dt);
     
     xAngles[i] = mpus[i]->getAngleX();
     yAngles[i] = mpus[i]->getAngleY();
