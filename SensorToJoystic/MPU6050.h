@@ -1,49 +1,67 @@
-//MIT License
-
-//Copyright (c) 2025 Ewan McCairn "EwanDev"
-
-//Permission is hereby granted, free of charge, to any person obtaining a copy
-//of this software and associated documentation files (the "Software"), to deal
-//in the Software without restriction, including without limitation the rights
-//to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-//copies of the Software, and to permit persons to whom the Software is
-//furnished to do so, subject to the following conditions:
-
-//The above copyright notice and this permission notice shall be included in all
-//copies or substantial portions of the Software.
-
-//THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-//IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-//FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-//AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-//LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-//OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-//SOFTWARE.
-
 #ifndef MPU6050_H
 #define MPU6050_H
 
 #include <Arduino.h>
-#include <Wire.h> // Wire kütüphanesi
+#include <SoftwareWire.h>
 
-// SoftwareWire desteği için pointer ekle
-extern TwoWire* mpu6050Wire;
+class MPU6050 {
+public:
+    // Constructor
+    MPU6050(SoftwareWire* wire = nullptr, uint8_t address = 0x68);
 
-void setWire(TwoWire* wire);
+    // Set the I2C wire
+    void setWire(SoftwareWire* wire);
 
-int wakeSensor(uint8_t address);
+    // Wake sensor from sleep mode
+    int begin(int id = 0);
 
-int readGyroData(uint8_t address, float &gX, float &gY, float &gZ);
-int readAccelData(uint8_t address, float &aX, float &aY, float &aZ);
-int readTempData(uint8_t address, float &temp);
+    // Read sensor data
+    int readGyroData(float &gX, float &gY, float &gZ);
+    int readAccelData(float &aX, float &aY, float &aZ);
+    int readTempData(float &temp);
 
-int rawGyroToDPS(float rawGX, float rawGY, float rawGZ, float &dpsGX, float &dpsGY, float &dpsGZ);
-int rawAccelToGForce(float rawAX, float rawAY, float rawAZ, float &gForceAX, float &gForceAY, float &gForceAZ);
+    // Convert raw data to meaningful units
+    int rawGyroToDPS(float rawGX, float rawGY, float rawGZ, float &dpsGX, float &dpsGY, float &dpsGZ);
+    int rawAccelToGForce(float rawAX, float rawAY, float rawAZ, float &gForceAX, float &gForceAY, float &gForceAZ);
 
-int dpsToAngles(float dpsGX, float dpsGY, float dpsGZ, float &actGX, float &actGY, float &actGZ);
-int calculateGyroOffset(uint8_t address,uint16_t sampleCount, double &gyroOffsetX, double &gyroOffsetY, double &gyroOffsetZ, const char* msg = "");
-int calculateAnglesFromAccel(float aX, float aY, float aZ, float &pitch, float &roll);
-int calculateAccelOffset(uint8_t address,uint16_t sampleCount, double &accelOffsetX, double &accelOffsetY, const char* msg = "");
+    // Calculate angles and offsets
+    int dpsToAngles(float dpsGX, float dpsGY, float dpsGZ, float &actGX, float &actGY, float &actGZ);
+    int calculateGyroOffset(uint16_t sampleCount, double &gyroOffsetX, double &gyroOffsetY, double &gyroOffsetZ, int id);
+    int calculateAnglesFromAccel(float aX, float aY, float aZ, float &pitch, float &roll);
+    int calculateAccelOffset(uint16_t sampleCount, double &accelOffsetX, double &accelOffsetY, int id);
 
-int complementaryFilter(float dpsGyro, float accelAngle, float alpha, float deltaTime, float &filteredAngle);
+    // Apply complementary filter
+    int complementaryFilter(float dpsGyro, float accelAngle, float alpha, float deltaTime, float &filteredAngle);
+
+    void update(float &pitch, float &roll, float &yaw);
+    void setComplementaryFilterAlpha(float alpha);
+private:
+    SoftwareWire* wire;
+    uint8_t address;
+    float complementaryFilterAlpha = 0.1;
+    // MPU6050 register addresses
+    enum MPU6050_Registers : uint8_t {
+        PWR_MGMT_1  = 0x6B,
+        GYRO_XOUT_H = 0x43,
+        ACCEL_XOUT_H = 0x3B,
+        TEMP_OUT_H = 0x41
+    };
+
+    // I2C error codes
+    enum I2C_Errors : uint8_t {
+        DATA_TOO_LONG_FOR_TRANSMIT_BUFFER = 1,
+        ADDRESS_TRANSMIT_NACK = 2,
+        DATA_TRANSMIT_NACK = 3,
+        OTHER_ERROR = 4,
+        TIMEOUT = 5
+    };
+
+    // Internal timestamp for angle calculations
+    unsigned long previousTime;
+
+    // Calibrate gyroscope and accelerometer for both sensors
+    double gyroOffsetX, gyroOffsetY, gyroOffsetZ;
+    double accelOffsetX, accelOffsetY;
+};
+
 #endif
